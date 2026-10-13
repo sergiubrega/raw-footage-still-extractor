@@ -1,13 +1,53 @@
 [project]
 name = "raw-footage-still-extractor"
 version = "0.1.0"
-description = "Add your description here"
+description = "Fast, parallel CLI that pulls five 300px JPEG stills from every video in a deep footage tree, then builds a browsable two-pane HTML gallery."
+readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Sergiu Brega", email = "sergiubrega@gmail.com" }]
+keywords = [
+    "ffmpeg",
+    "ffprobe",
+    "video",
+    "stills",
+    "thumbnails",
+    "contact-sheet",
+    "mxf",
+    "b-roll",
+    "media-management",
+    "cli",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Utilities",
+]
 dependencies = []
 
 [project.scripts]
 raw-footage-still-extractor = "raw_footage_still_extractor:main"
 raw-footage-still-gallery = "raw_footage_still_extractor.gallery:main"
+
+[project.urls]
+Repository = "https://github.com/sergiubrega/raw-footage-still-extractor"
+Issues = "https://github.com/sergiubrega/raw-footage-still-extractor/issues"
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]
