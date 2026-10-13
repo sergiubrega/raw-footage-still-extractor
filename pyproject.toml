@@ -6,7 +6,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "Sergiu Brega", email = "sergiubrega@gmail.com" }]
+authors = [
+    { name = "Sergiu Brega", email = "81160254+sergiubrega@users.noreply.github.com" },
+]
 keywords = [
     "ffmpeg",
     "ffprobe",
