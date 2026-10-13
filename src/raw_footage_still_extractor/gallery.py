@@ -1,7 +1,9 @@
-"""Build a static, self-contained HTML gallery from an extracted stills directory.
+"""Build a static, self-contained two-pane HTML gallery from an extracted stills directory.
 
 Reads the flat output directory produced by :mod:`raw_footage_still_extractor`
-and writes a single ``index.html`` next to the JPEGs. Standard library only.
+and writes a single ``index.html`` next to the JPEGs: a fixed sidebar listing
+every folder (a media-bin style navigator) and a scrollable gallery pane, with
+inline vanilla JS doing the filtering. Standard library only — no frameworks.
 
 Filename schema consumed (see the extractor):
 
@@ -13,7 +15,7 @@ both, so the pair cannot be split reliably from the filename alone. The
 recovery possible: pass ``--source-root`` and the tool re-walks the footage tree,
 recomputes each hash, and restores the true parent folder / stem / relative path.
 Without ``--source-root`` the gallery still groups the five frames per clip, but
-lists clips flat instead of inventing a hierarchy it cannot know.
+lists them in a single flat group instead of inventing a hierarchy it cannot know.
 """
 
 import argparse
@@ -28,6 +30,12 @@ from .extractor import DISAMBIGUATOR_LENGTH, FRAME_FRACTIONS, VIDEO_EXTENSIONS
 
 FRAME_COUNT = len(FRAME_FRACTIONS)
 
+# Folder key for clips whose hierarchy could not be recovered.
+FLAT_KEY = "__flat__"
+
+# Sentinel the sidebar's "Show All" item filters on.
+ALL_KEY = "__all__"
+
 _FRAME_PATTERN = re.compile(
     rf"^(?P<prefix>.+)_(?P<digest>[0-9a-f]{{{DISAMBIGUATOR_LENGTH}}})"
     rf"_frame_(?P<frame>\d+)\.jpg$"
@@ -36,38 +44,69 @@ _FRAME_PATTERN = re.compile(
 _CSS = """
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
-html, body { margin: 0; }
+html, body { height: 100%; margin: 0; }
 body {
+  display: flex;
+  overflow: hidden;
   background: #1e1e1e;
   color: #e6e6e6;
   font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  padding: 0 24px 64px;
 }
-.top {
-  position: sticky; top: 0; z-index: 10;
-  background: rgba(30, 30, 30, 0.94);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid #333;
-  margin: 0 -24px 20px;
-  padding: 16px 24px 12px;
+
+/* ---- left sidebar (media bin) ---- */
+.sidebar {
+  flex: 0 0 280px;
+  width: 280px;
+  overflow-y: auto;
+  background: #181818;
+  border-right: 1px solid #333;
+  padding: 16px 12px 32px;
 }
-h1 { font-size: 18px; margin: 0 0 4px; font-weight: 600; }
-.meta { margin: 0; color: #9a9a9a; font-size: 12px; }
-.note {
-  margin: 10px 0 0; color: #d7ba7d; font-size: 12px; max-width: 90ch;
-}
-.note code {
+.brand { padding: 0 4px 12px; margin-bottom: 12px; border-bottom: 1px solid #2c2c2c; }
+h1 { font-size: 15px; margin: 0 0 4px; font-weight: 600; }
+.meta { margin: 0; color: #8a8a8a; font-size: 11px; }
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav-item {
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #c8c8c8;
+  user-select: none;
+  word-break: break-all;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  color: #cecece;
 }
+.nav-item:hover { background: #2a2d2e; color: #fff; }
+.nav-item.active { background: #0e639c; border-color: #1177bb; color: #fff; }
+.nav-all { font-family: inherit; font-weight: 600; margin-bottom: 6px; }
+
+/* ---- right gallery pane ---- */
+.main { flex: 1 1 auto; overflow-y: auto; padding: 20px 24px 80px; }
+.note {
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  color: #d7ba7d;
+  font-size: 12px;
+  max-width: 90ch;
+  background: #2a2416;
+  border: 1px solid #4a3f22;
+  border-radius: 6px;
+}
+.note code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #e6d7ae; }
+.folder-group { margin-bottom: 10px; }
 h2 {
-  font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
-  color: #9cdcfe; margin: 30px 0 12px; padding-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #9cdcfe;
+  margin: 24px 0 12px;
+  padding-bottom: 6px;
   border-bottom: 1px solid #333;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   word-break: break-all;
 }
-section { margin-bottom: 8px; }
+.folder-group:first-of-type h2 { margin-top: 0; }
 .clip {
   background: #252526;
   border: 1px solid #333;
@@ -101,6 +140,27 @@ section { margin-bottom: 8px; }
 .frame figcaption {
   text-align: center; color: #8a8a8a; font-size: 11px; margin-top: 4px;
 }
+"""
+
+_JS = """
+(function () {
+  var items = Array.prototype.slice.call(document.querySelectorAll(".nav-item"));
+  var groups = Array.prototype.slice.call(document.querySelectorAll(".folder-group"));
+
+  function select(item) {
+    var target = item.getAttribute("data-target");
+    groups.forEach(function (group) {
+      var match = target === "__all__" || group.getAttribute("data-folder") === target;
+      group.style.display = match ? "block" : "none";
+    });
+    items.forEach(function (other) { other.classList.remove("active"); });
+    item.classList.add("active");
+  }
+
+  items.forEach(function (item) {
+    item.addEventListener("click", function () { select(item); });
+  });
+})();
 """
 
 
@@ -137,9 +197,7 @@ def source_index(source_root: Path) -> dict[str, dict[str, str]]:
     return index
 
 
-def collect_clips(
-    stills_dir: Path, index: dict[str, dict[str, str]]
-) -> list[dict]:
+def collect_clips(stills_dir: Path, index: dict[str, dict[str, str]]) -> list[dict]:
     """Group stills into clips (one per video), attaching hierarchy when known."""
     clips: dict[str, dict] = {}
     for path in sorted(stills_dir.glob("*.jpg")):
@@ -165,20 +223,34 @@ def collect_clips(
     return list(clips.values())
 
 
-def build_sections(clips: list[dict]) -> list[tuple[str | None, list[dict]]]:
-    """Group clips into (section_title, clips) pairs, sorted for scanning."""
+def build_sections(clips: list[dict]) -> list[tuple[str, str, list[dict]]]:
+    """Group clips into ``(folder_key, display_title, clips)`` triples for the UI.
+
+    ``folder_key`` is the value written to ``data-folder`` / ``data-target``; the
+    display title is what the sidebar and ``<h2>`` show. Grouping is by the
+    *relative* parent path, not just the parent name, so two folders that merely
+    share a basename (e.g. two ``100MEDIA`` dumps) stay separate.
+    """
     known = [c for c in clips if c["parent_rel"] is not None]
     unknown = [c for c in clips if c["parent_rel"] is None]
 
-    sections: list[tuple[str | None, list[dict]]] = []
+    sections: list[tuple[str, str, list[dict]]] = []
     grouped: dict[str, list[dict]] = {}
     for clip in known:
         grouped.setdefault(clip["parent_rel"], []).append(clip)
     for parent_rel in sorted(grouped, key=str.lower):
         label = parent_rel if parent_rel != "." else "(root)"
-        sections.append((label, sorted(grouped[parent_rel], key=lambda c: c["title"].lower())))
+        sections.append(
+            (parent_rel, label, sorted(grouped[parent_rel], key=lambda c: c["title"].lower()))
+        )
     if unknown:
-        sections.append((None, sorted(unknown, key=lambda c: c["title"].lower())))
+        sections.append(
+            (
+                FLAT_KEY,
+                "All clips (no hierarchy)",
+                sorted(unknown, key=lambda c: c["title"].lower()),
+            )
+        )
     return sections
 
 
@@ -205,16 +277,24 @@ def _clip_html(clip: dict) -> str:
     )
 
 
-def render_html(
-    sections: list[tuple[str | None, list[dict]]], *, title: str, note: str
-) -> str:
-    total_clips = sum(len(clips) for _, clips in sections)
-    total_images = sum(len(c["frames"]) for _, clips in sections for c in clips)
+def render_html(sections: list[tuple[str, str, list[dict]]], *, title: str, note: str) -> str:
+    total_clips = sum(len(clips) for _, _, clips in sections)
+    total_images = sum(len(c["frames"]) for _, _, clips in sections for c in clips)
 
+    nav = [f'<div class="nav-item nav-all active" data-target="{ALL_KEY}">Show All</div>']
     body = []
-    for section_title, clips in sections:
-        heading = f"<h2>{html.escape(section_title)}</h2>" if section_title else ""
-        body.append(f"<section>{heading}{''.join(_clip_html(c) for c in clips)}</section>")
+    for folder_key, display_title, clips in sections:
+        key_attr = html.escape(folder_key, quote=True)
+        nav.append(
+            f'<div class="nav-item" data-target="{key_attr}" '
+            f'title="{html.escape(display_title, quote=True)}">{html.escape(display_title)}</div>'
+        )
+        body.append(
+            f'<div class="folder-group" data-folder="{key_attr}">'
+            f"<h2>{html.escape(display_title)}</h2>"
+            f"{''.join(_clip_html(c) for c in clips)}"
+            "</div>"
+        )
 
     return (
         "<!DOCTYPE html>\n"
@@ -224,20 +304,26 @@ def render_html(
         f"<title>{html.escape(title)}</title>\n"
         f"<style>{_CSS}</style>\n"
         "</head>\n<body>\n"
-        '<header class="top">\n'
+        '<aside class="sidebar">\n'
+        '<div class="brand">\n'
         f"<h1>{html.escape(title)}</h1>\n"
         f'<p class="meta">{total_clips} clip(s) &middot; {total_images} still(s)</p>\n'
+        "</div>\n"
+        f'<nav class="nav">\n{"".join(nav)}\n</nav>\n'
+        "</aside>\n"
+        '<main class="main">\n'
         f"{note}\n"
-        "</header>\n<main>\n"
         f"{''.join(body)}\n"
-        "</main>\n</body>\n</html>\n"
+        "</main>\n"
+        f"<script>{_JS}</script>\n"
+        "</body>\n</html>\n"
     )
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="raw-footage-still-gallery",
-        description="Build a static index.html gallery from an extracted stills directory.",
+        description="Build a static two-pane index.html gallery from an extracted stills directory.",
     )
     parser.add_argument("stills_dir", type=Path, help="flat directory of extracted JPEG stills")
     parser.add_argument(
@@ -281,7 +367,7 @@ def main(argv: list[str] | None = None) -> None:
             "<code>100MEDIA_A001_C001_2c740e9fad5f_frame_1.jpg</code> cannot be split "
             "into parent + stem, because <code>_</code> is legal in both. Re-run with "
             "<code>--source-root /path/to/raw_footage</code> to restore the exact "
-            "hierarchy from the path hash. Clips are listed flat below.</p>"
+            "hierarchy from the path hash.</p>"
         )
 
     output = (args.output or (stills_dir / "index.html")).resolve()

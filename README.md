@@ -103,6 +103,14 @@ uv run raw-footage-still-gallery /path/to/output_stills
 
 This writes `index.html` directly into the stills directory and prints its absolute path (⌘-click it to open). Every `<img>` carries `loading="lazy"`, so thousands of stills load without freezing the browser.
 
+### Layout: a two-pane media bin
+
+The page is a self-contained app (no frameworks, no build step, no network):
+
+- **Left sidebar** — fixed 280px, independently scrolling, lists **Show All** plus one entry per folder (full relative path, so folders that merely share a basename stay distinguishable).
+- **Right gallery pane** — fills the remaining space and scrolls on its own; each folder is a `<div class="folder-group" data-folder="…">` containing its `<h2>` and clip cards.
+- **Filtering** — inline vanilla JS matches the clicked item's `data-target` against each group's `data-folder` (`display: block/none`) and moves the `.active` highlight.
+
 ### Grouping: why `--source-root` exists
 
 The naming schema joins parent and stem with `_`, and `_` is legal inside both — so `100MEDIA_A001_C001_2c740e9fad5f_frame_1.jpg` **cannot** be split back into `parent` + `stem` from the filename alone (it could be `100MEDIA`/`A001_C001` or `100MEDIA_A001`/`C001`). Two modes:
