@@ -45,13 +45,17 @@ git clone https://github.com/sergiubrega/raw-footage-still-extractor
 cd raw-footage-still-extractor
 ```
 
+> The project is called `raw-footage-still-extractor`, but the **import package is
+> `still_extractor`** — the same distribution-name ≠ import-name pattern as
+> `beautifulsoup4` → `bs4` or `Pillow` → `PIL`.
+
 The project is managed with [uv](https://docs.astral.sh/uv/), which provisions
 Python 3.10 and the package into a local `.venv` automatically — **no manual
 activation required**. `uv run` syncs the environment on first use and reuses it
 afterwards.
 
 ```bash
-uv run python -m raw_footage_still_extractor --help
+uv run python -m still_extractor --help
 ```
 
 You can also invoke the installed console script directly:
@@ -68,12 +72,12 @@ To use a shell where `python` resolves to the project environment:
 ```bash
 uv sync                    # create/update .venv from uv.lock
 source .venv/bin/activate
-python -m raw_footage_still_extractor --help
+python -m still_extractor --help
 deactivate
 ```
 
-Without `uv run` or activation, a bare `python -m raw_footage_still_extractor`
-fails with `No module named raw_footage_still_extractor`: the package is only
+Without `uv run` or activation, a bare `python -m still_extractor`
+fails with `No module named still_extractor`: the package is only
 importable once installed into the environment.
 </details>
 
@@ -109,7 +113,7 @@ options:
 Extract stills from a raw footage directory into a flat output folder:
 
 ```bash
-uv run python -m raw_footage_still_extractor /path/to/630GB_raw_footage /path/to/output_stills
+uv run python -m still_extractor /path/to/630GB_raw_footage /path/to/output_stills
 ```
 
 ### Custom Worker Count
@@ -117,7 +121,7 @@ uv run python -m raw_footage_still_extractor /path/to/630GB_raw_footage /path/to
 By default, the script saturates all available CPU cores (`os.cpu_count()`). To limit core usage during background execution:
 
 ```bash
-uv run python -m raw_footage_still_extractor /path/to/raw_footage /path/to/output_stills --workers 4
+uv run python -m still_extractor /path/to/raw_footage /path/to/output_stills --workers 4
 ```
 
 ## Output Naming Schema

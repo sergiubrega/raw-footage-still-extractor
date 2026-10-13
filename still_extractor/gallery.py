@@ -1,6 +1,6 @@
 """Build a static, self-contained two-pane HTML gallery from an extracted stills directory.
 
-Reads the flat output directory produced by :mod:`raw_footage_still_extractor`
+Reads the flat output directory produced by :mod:`still_extractor`
 and writes a single ``index.html`` next to the JPEGs: a fixed sidebar listing
 every folder (a media-bin style navigator) and a scrollable gallery pane, with
 inline vanilla JS doing the filtering. Standard library only — no frameworks.

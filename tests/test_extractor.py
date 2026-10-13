@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from raw_footage_still_extractor.extractor import (
+from still_extractor.extractor import (
     DISAMBIGUATOR_LENGTH,
     VIDEO_EXTENSIONS,
     discover_videos,

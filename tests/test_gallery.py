@@ -3,8 +3,8 @@
 import hashlib
 import re
 
-from raw_footage_still_extractor.extractor import DISAMBIGUATOR_LENGTH, output_name
-from raw_footage_still_extractor.gallery import (
+from still_extractor.extractor import DISAMBIGUATOR_LENGTH, output_name
+from still_extractor.gallery import (
     ALL_KEY,
     FLAT_KEY,
     attach_hierarchy,

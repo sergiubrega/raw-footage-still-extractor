@@ -1,6 +1,6 @@
 [project]
 name = "raw-footage-still-extractor"
-version = "0.1.0"
+version = "0.1.1"
 description = "Fast, parallel CLI that pulls five 300px JPEG stills from every video in a deep footage tree, then builds a browsable two-pane HTML gallery."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -38,8 +38,8 @@ classifiers = [
 dependencies = []
 
 [project.scripts]
-raw-footage-still-extractor = "raw_footage_still_extractor:main"
-raw-footage-still-gallery = "raw_footage_still_extractor.gallery:main"
+raw-footage-still-extractor = "still_extractor:main"
+raw-footage-still-gallery = "still_extractor.gallery:main"
 
 [project.urls]
 Repository = "https://github.com/sergiubrega/raw-footage-still-extractor"
@@ -56,5 +56,8 @@ requires = ["uv_build>=0.12.19,<0.13.0"]
 build-backend = "uv_build"
 
 # Flat layout: the package sits at the repo root, not under src/.
+# module-name is required because the package name (still_extractor) differs
+# from the distribution name (raw-footage-still-extractor).
 [tool.uv.build-backend]
 module-root = ""
+module-name = "still_extractor"
