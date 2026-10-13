@@ -2,6 +2,7 @@
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+![CI](https://github.com/sergiubrega/raw-footage-still-extractor/actions/workflows/ci.yml/badge.svg)
 
 A fast, parallel CLI tool built in Python to extract 5 representative low-resolution JPEGs (300px) from raw video files across deep directory structures using FFmpeg fast-seeking, then build a browsable two-pane HTML gallery.
 
@@ -138,6 +139,8 @@ This writes `index.html` directly into the stills directory and prints its absol
 
 ### Layout: a two-pane media bin
 
+![The generated gallery: a folder sidebar on the left, grouped clip stills on the right](docs/gallery.png)
+
 The page is a self-contained app (no frameworks, no build step, no network):
 
 - **Left sidebar** — fixed 280px, independently scrolling, lists **Show All** plus one entry per folder (full relative path, so folders that merely share a basename stay distinguishable).
@@ -167,6 +170,28 @@ uv run raw-footage-still-gallery /path/to/output_stills --source-root /path/to/r
 uv sync          # create the env (includes the dev group: pytest)
 uv run pytest    # 21 tests; media tests auto-skip if ffmpeg/ffprobe are absent
 ```
+
+## Releasing
+
+1. Bump `version` in `pyproject.toml`.
+2. Tag and push the tag:
+
+   ```bash
+   git tag -a v0.1.0 -m "v0.1.0"
+   git push origin v0.1.0
+   ```
+
+3. Publish a GitHub Release for that tag. `.github/workflows/publish.yml` then builds the sdist + wheel and uploads them to PyPI using **Trusted Publishing** (OIDC) — no API token is stored in the repo.
+
+**One-time PyPI setup** — on PyPI go to *Account → Publishing → Add a pending publisher* and enter:
+
+| Field | Value |
+| --- | --- |
+| PyPI project name | `raw-footage-still-extractor` |
+| Owner | `sergiubrega` |
+| Repository name | `raw-footage-still-extractor` |
+| Workflow name | `publish.yml` |
+| Environment name | `pypi` |
 
 ## License
 
