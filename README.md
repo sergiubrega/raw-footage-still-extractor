@@ -13,11 +13,37 @@ A fast, parallel CLI tool built in Python to extract 5 representative low-resolu
 
 ## Installation & Setup
 
-Run locally as a module:
+The project is managed with [uv](https://docs.astral.sh/uv/), which provisions
+Python 3.10 and the package into a local `.venv` automatically — **no manual
+activation required**. `uv run` syncs the environment on first use and reuses it
+afterwards.
 
 ```bash
-python -m raw_footage_still_extractor --help
+uv run python -m raw_footage_still_extractor --help
 ```
+
+You can also invoke the installed console script directly:
+
+```bash
+uv run raw-footage-still-extractor --help
+```
+
+<details>
+<summary>Alternative: activate the virtualenv manually</summary>
+
+To use a shell where `python` resolves to the project environment:
+
+```bash
+uv sync                    # create/update .venv from uv.lock
+source .venv/bin/activate
+python -m raw_footage_still_extractor --help
+deactivate
+```
+
+Without `uv run` or activation, a bare `python -m raw_footage_still_extractor`
+fails with `No module named raw_footage_still_extractor`: this is a `src/`-layout
+package, so it is only importable once installed into the environment.
+</details>
 
 ```
 usage: raw-footage-still-extractor [-h] [-w WORKERS] root_dir output_dir
@@ -42,7 +68,7 @@ options:
 Extract stills from a raw footage directory into a flat output folder:
 
 ```bash
-python -m raw_footage_still_extractor /path/to/630GB_raw_footage /path/to/output_stills
+uv run python -m raw_footage_still_extractor /path/to/630GB_raw_footage /path/to/output_stills
 ```
 
 ### Custom Worker Count
@@ -50,7 +76,7 @@ python -m raw_footage_still_extractor /path/to/630GB_raw_footage /path/to/output
 By default, the script saturates all available CPU cores (`os.cpu_count()`). To limit core usage during background execution:
 
 ```bash
-python -m raw_footage_still_extractor /path/to/raw_footage /path/to/output_stills --workers 4
+uv run python -m raw_footage_still_extractor /path/to/raw_footage /path/to/output_stills --workers 4
 ```
 
 ## Output Naming Schema
