@@ -38,6 +38,13 @@ Because ffmpeg identifies containers by **content**, this list is only a *discov
 
 ## Installation & Setup
 
+Distributed **only via GitHub** — there is no PyPI package. Clone and run:
+
+```bash
+git clone https://github.com/sergiubrega/raw-footage-still-extractor
+cd raw-footage-still-extractor
+```
+
 The project is managed with [uv](https://docs.astral.sh/uv/), which provisions
 Python 3.10 and the package into a local `.venv` automatically — **no manual
 activation required**. `uv run` syncs the environment on first use and reuses it
@@ -66,8 +73,8 @@ deactivate
 ```
 
 Without `uv run` or activation, a bare `python -m raw_footage_still_extractor`
-fails with `No module named raw_footage_still_extractor`: this is a `src/`-layout
-package, so it is only importable once installed into the environment.
+fails with `No module named raw_footage_still_extractor`: the package is only
+importable once installed into the environment.
 </details>
 
 ```
@@ -173,25 +180,24 @@ uv run pytest    # 21 tests; media tests auto-skip if ffmpeg/ffprobe are absent
 
 ## Releasing
 
+This project is distributed **only via GitHub** — there is no PyPI package, so a
+release is just a tagged snapshot for people to download.
+
 1. Bump `version` in `pyproject.toml`.
 2. Tag and push the tag:
 
    ```bash
-   git tag -a v0.1.0 -m "v0.1.0"
-   git push origin v0.1.0
+   git tag -a v0.1.1 -m "v0.1.1"
+   git push origin v0.1.1
    ```
 
-3. Publish a GitHub Release for that tag. `.github/workflows/publish.yml` then builds the sdist + wheel and uploads them to PyPI using **Trusted Publishing** (OIDC) — no API token is stored in the repo.
+3. Create a GitHub Release for it:
 
-**One-time PyPI setup** — on PyPI go to *Account → Publishing → Add a pending publisher* and enter:
+   ```bash
+   gh release create v0.1.1 --title v0.1.1 --notes-file NOTES.md
+   ```
 
-| Field | Value |
-| --- | --- |
-| PyPI project name | `raw-footage-still-extractor` |
-| Owner | `sergiubrega` |
-| Repository name | `raw-footage-still-extractor` |
-| Workflow name | `publish.yml` |
-| Environment name | `pypi` |
+Users get the tool by cloning the repo — see [Installation & Setup](#installation--setup).
 
 ## License
 
