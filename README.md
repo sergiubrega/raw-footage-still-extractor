@@ -11,6 +11,27 @@ A fast, parallel CLI tool built in Python to extract 5 representative low-resolu
 > `.pkg` installer only updates `PATH` for *new* shells — an already-open
 > terminal needs `eval "$(/opt/homebrew/bin/brew shellenv)"` or a new tab.
 
+## Supported formats
+
+The default scan covers 38 common video extensions, matched case-insensitively
+(`.MP4` == `.mp4`):
+
+```
+.3g2 .3gp .asf .avi .divx .dv .f4v .flv .insv .lrv .m1v .m2t .m2ts .m2v
+.m4v .mkv .mod .mov .mp4 .mpe .mpeg .mpg .mpv .mts .mxf .nuv .ogv .qt .rm
+.rmvb .tod .tp .trp .ts .vob .webm .wmv .y4m
+```
+
+Override the set with `--extensions` (dots optional, commas separate):
+
+```bash
+uv run raw-footage-still-extractor "<ROOT>" "<OUT>" --extensions ".mp4,.mov,.mxf"
+```
+
+Because ffmpeg identifies containers by **content**, this list is only a *discovery* filter — it decides which files get probed, not what can be read. An unusual extension still probes fine once it is listed.
+
+**Deliberately excluded:** camera-RAW formats ffmpeg cannot demux without vendor SDKs — `.braw` (Blackmagic), `.r3d` (RED), `.ari` (ARRI), `.crm` (Canon), `.dng` (CinemaDNG). Listing them would only produce guaranteed probe failures; transcode/proxy those first.
+
 ## Installation & Setup
 
 The project is managed with [uv](https://docs.astral.sh/uv/), which provisions
@@ -46,9 +67,10 @@ package, so it is only importable once installed into the environment.
 </details>
 
 ```
-usage: raw-footage-still-extractor [-h] [-w WORKERS] root_dir output_dir
+usage: raw-footage-still-extractor [-h] [-w WORKERS] [-e LIST]
+                                   root_dir output_dir
 
-Extract 5 stills (10/30/50/70/90%) from every .mp4/.mxf file under a root
+Extract 5 stills (10/30/50/70/90%) from every video file under a root
 directory, into a flat output directory.
 
 positional arguments:
@@ -59,6 +81,14 @@ options:
   -h, --help            show this help message and exit
   -w WORKERS, --workers WORKERS
                         number of worker processes (default: all CPU cores)
+  -e LIST, --extensions LIST
+                        comma-separated extensions to scan, replacing the
+                        default set (e.g. ".mp4,.mov,.mxf"). Default: .3g2,
+                        .3gp, .asf, .avi, .divx, .dv, .f4v, .flv, .insv, .lrv,
+                        .m1v, .m2t, .m2ts, .m2v, .m4v, .mkv, .mod, .mov, .mp4,
+                        .mpe, .mpeg, .mpg, .mpv, .mts, .mxf, .nuv, .ogv, .qt,
+                        .rm, .rmvb, .tod, .tp, .trp, .ts, .vob, .webm, .wmv,
+                        .y4m
 ```
 
 ## Usage

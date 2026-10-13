@@ -16,8 +16,26 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Case-insensitive match is applied via Path.suffix.lower().
-VIDEO_EXTENSIONS = {".mp4", ".mxf"}
+# Extensions scanned for, matched case-insensitively via Path.suffix.lower().
+#
+# ffmpeg detects the container by CONTENT, so this list is only a *discovery*
+# filter — it decides which files we bother to probe, not what we can read. That
+# also means an unusual extension for a supported container can be added with
+# --extensions. Deliberately excluded are camera-RAW formats ffmpeg cannot demux
+# without vendor SDKs (.braw, .r3d, .ari, .crm, .dng, .mxf-wrapped vendor RAW):
+# listing them would only produce guaranteed probe failures.
+VIDEO_EXTENSIONS = frozenset(
+    {
+        ".3g2", ".3gp", ".asf", ".avi", ".divx", ".dv", ".f4v", ".flv",
+        ".insv", ".lrv", ".m1v", ".m2t", ".m2ts", ".m2v", ".m4v", ".mkv",
+        ".mod", ".mov", ".mp4", ".mpe", ".mpeg", ".mpg", ".mpv", ".mts",
+        ".mxf", ".nuv", ".ogv", ".qt", ".rm", ".rmvb", ".tod", ".tp", ".trp",
+        ".ts", ".vob", ".webm", ".wmv", ".y4m",
+    }
+)
+
+# Human-readable default list, shown in --help.
+DEFAULT_EXTENSIONS_LABEL = ", ".join(sorted(VIDEO_EXTENSIONS))
 
 # Fractions of total duration at which a still is captured.
 FRAME_FRACTIONS = (0.10, 0.30, 0.50, 0.70, 0.90)
@@ -41,12 +59,28 @@ def ensure_tools() -> None:
         )
 
 
-def discover_videos(root_dir: Path) -> list[Path]:
-    """Recursively collect ``.mp4``/``.mxf`` files into a flat, sorted list."""
+def normalize_extensions(raw: str) -> set[str]:
+    """Parse a comma-separated extension list into a lowercased dotted set."""
+    extensions = set()
+    for part in raw.split(","):
+        part = part.strip().lower()
+        if part:
+            extensions.add(part if part.startswith(".") else "." + part)
+    return extensions
+
+
+def discover_videos(
+    root_dir: Path, extensions: set[str] | frozenset[str] = VIDEO_EXTENSIONS
+) -> list[Path]:
+    """Recursively collect video files into a flat, sorted list.
+
+    Matching is case-insensitive (``.MP4`` == ``.mp4``) because the comparison is
+    on ``Path.suffix.lower()``.
+    """
     return sorted(
         path
         for path in root_dir.rglob("*")
-        if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
+        if path.is_file() and path.suffix.lower() in extensions
     )
 
 
@@ -155,8 +189,8 @@ def process_video(
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="raw-footage-still-extractor",
-        description="Extract 5 stills (10/30/50/70/90%) from every .mp4/.mxf "
-        "file under a root directory, into a flat output directory.",
+        description="Extract 5 stills (10/30/50/70/90%) from every video file "
+        "under a root directory, into a flat output directory.",
     )
     parser.add_argument("root_dir", type=Path, help="root folder to search recursively")
     parser.add_argument("output_dir", type=Path, help="flat folder for the JPEG stills")
@@ -167,13 +201,22 @@ def main(argv: list[str] | None = None) -> None:
         default=os.cpu_count() or 1,
         help="number of worker processes (default: all CPU cores)",
     )
+    parser.add_argument(
+        "-e",
+        "--extensions",
+        default=None,
+        metavar="LIST",
+        help='comma-separated extensions to scan, replacing the default set '
+        '(e.g. ".mp4,.mov,.mxf"). Default: ' + DEFAULT_EXTENSIONS_LABEL,
+    )
     args = parser.parse_args(argv)
 
     ensure_tools()
     root_dir = args.root_dir.resolve()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    videos = discover_videos(root_dir)
+    extensions = normalize_extensions(args.extensions) if args.extensions else VIDEO_EXTENSIONS
+    videos = discover_videos(root_dir, extensions)
     total = len(videos)
     print(f"Found {total} video file(s) under {root_dir}")
     if total == 0:

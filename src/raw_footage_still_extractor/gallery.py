@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 
-from .extractor import DISAMBIGUATOR_LENGTH, FRAME_FRACTIONS, VIDEO_EXTENSIONS
+from .extractor import DISAMBIGUATOR_LENGTH, FRAME_FRACTIONS
 
 FRAME_COUNT = len(FRAME_FRACTIONS)
 
@@ -175,19 +175,24 @@ def parse_still_name(name: str) -> tuple[str, str, int] | None:
     return match.group("prefix"), match.group("digest"), frame
 
 
-def source_index(source_root: Path) -> dict[str, dict[str, str]]:
-    """Map ``digest -> {parent, parent_rel, name, relative}`` by walking the footage tree.
+def source_index(source_root: Path, wanted: set[str]) -> dict[str, dict[str, str]]:
+    """Map ``digest -> {parent, parent_rel, name, relative}`` for the wanted digests.
 
-    Only file names are read (no media decoding), so this is cheap even over a
-    large tree.
+    Walks the footage tree and hashes every file's path relative to ``root``,
+    keeping only the digests the stills actually need. Filtering on the wanted set
+    (rather than on a video-extension list) keeps the gallery correct no matter
+    which ``--extensions`` the extractor was run with. Only file names are read —
+    no media decoding — so this is cheap even over a large tree.
     """
     root = source_root.resolve()
     index: dict[str, dict[str, str]] = {}
     for path in root.rglob("*"):
-        if not (path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS):
+        if not path.is_file():
             continue
         relative = path.resolve().relative_to(root)
         digest = hashlib.sha1(str(relative).encode("utf-8")).hexdigest()[:DISAMBIGUATOR_LENGTH]
+        if digest not in wanted:
+            continue
         index[digest] = {
             "parent": path.parent.name,
             "parent_rel": str(relative.parent),
@@ -197,8 +202,8 @@ def source_index(source_root: Path) -> dict[str, dict[str, str]]:
     return index
 
 
-def collect_clips(stills_dir: Path, index: dict[str, dict[str, str]]) -> list[dict]:
-    """Group stills into clips (one per video), attaching hierarchy when known."""
+def collect_clips(stills_dir: Path) -> dict[str, dict]:
+    """Group stills by digest into clips (one per video)."""
     clips: dict[str, dict] = {}
     for path in sorted(stills_dir.glob("*.jpg")):
         parsed = parse_still_name(path.name)
@@ -209,7 +214,11 @@ def collect_clips(stills_dir: Path, index: dict[str, dict[str, str]]) -> list[di
             digest, {"digest": digest, "prefix": prefix, "frames": {}}
         )
         clip["frames"][frame] = path.name
+    return clips
 
+
+def attach_hierarchy(clips: dict[str, dict], index: dict[str, dict[str, str]]) -> None:
+    """Fill in parent / stem / display title for each clip from the source index."""
     for clip in clips.values():
         meta = index.get(clip["digest"])
         if meta is None:
@@ -220,7 +229,6 @@ def collect_clips(stills_dir: Path, index: dict[str, dict[str, str]]) -> list[di
                 parent_rel=meta["parent_rel"],
                 title=meta["name"],
             )
-    return list(clips.values())
 
 
 def build_sections(clips: list[dict]) -> list[tuple[str, str, list[dict]]]:
@@ -347,17 +355,18 @@ def main(argv: list[str] | None = None) -> None:
     if not stills_dir.is_dir():
         sys.exit(f"Error: not a directory: {stills_dir}")
 
+    clips = collect_clips(stills_dir)
+    if not clips:
+        sys.exit(f"Error: no stills matching the naming schema found in {stills_dir}")
+
     index: dict[str, dict[str, str]] = {}
     if args.source_root is not None:
         if not args.source_root.is_dir():
             sys.exit(f"Error: --source-root is not a directory: {args.source_root}")
-        index = source_index(args.source_root)
+        index = source_index(args.source_root, set(clips))
+    attach_hierarchy(clips, index)
 
-    clips = collect_clips(stills_dir, index)
-    if not clips:
-        sys.exit(f"Error: no stills matching the naming schema found in {stills_dir}")
-
-    sections = build_sections(clips)
+    sections = build_sections(list(clips.values()))
     title = args.title or f"Stills \u2014 {stills_dir.name}"
 
     note = ""
