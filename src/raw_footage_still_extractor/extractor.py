@@ -26,9 +26,8 @@ SCALE_FILTER = "scale=300:-1"
 JPEG_QUALITY = "2"  # -q:v 2
 
 # Hex chars of the relative-path digest used to disambiguate output filenames.
-# 8 chars = 32 bits; collision probability stays negligible for tens of
-# thousands of files.
-DISAMBIGUATOR_LENGTH = 8
+# 12 chars = 48 bits; collisions are negligible even at millions of files.
+DISAMBIGUATOR_LENGTH = 12
 
 
 def ensure_tools() -> None:
