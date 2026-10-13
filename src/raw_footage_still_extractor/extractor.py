@@ -9,6 +9,7 @@ Standard library only. Requires ``ffmpeg`` and ``ffprobe`` on the system PATH.
 
 import argparse
 import concurrent.futures
+import hashlib
 import os
 import shutil
 import subprocess
@@ -23,6 +24,11 @@ FRAME_FRACTIONS = (0.10, 0.30, 0.50, 0.70, 0.90)
 
 SCALE_FILTER = "scale=300:-1"
 JPEG_QUALITY = "2"  # -q:v 2
+
+# Hex chars of the relative-path digest used to disambiguate output filenames.
+# 8 chars = 32 bits; collision probability stays negligible for tens of
+# thousands of files.
+DISAMBIGUATOR_LENGTH = 8
 
 
 def ensure_tools() -> None:
@@ -78,9 +84,25 @@ def probe_duration(file_path: Path) -> float:
     return duration
 
 
-def output_name(file_path: Path, frame_index: int) -> str:
-    """Build ``{parent}_{stem}_frame_{n}.jpg`` with spaces -> underscores."""
-    name = f"{file_path.parent.name}_{file_path.stem}_frame_{frame_index}.jpg"
+def output_name(file_path: Path, root_dir: Path, frame_index: int) -> str:
+    """Build ``{parent}_{stem}_{hash}_frame_{n}.jpg`` with spaces -> underscores.
+
+    ``{hash}`` is a short digest of the file's path *relative to* ``root_dir``.
+    That keeps output flat while guaranteeing distinct names for files that share
+    both an immediate-parent name and a stem in different subtrees (e.g.
+    ``CARD_01/DCIM/100MEDIA/A001_C001.MXF`` vs
+    ``CARD_02/DCIM/100MEDIA/A001_C001.MXF``), and for same-stem files differing
+    only by extension in one folder.
+    """
+    try:
+        relative = file_path.resolve().relative_to(root_dir.resolve())
+    except ValueError:  # not under root_dir (shouldn't happen via rglob)
+        relative = file_path
+    digest = hashlib.sha1(str(relative).encode("utf-8")).hexdigest()[:DISAMBIGUATOR_LENGTH]
+    name = (
+        f"{file_path.parent.name}_{file_path.stem}_{digest}"
+        f"_frame_{frame_index}.jpg"
+    )
     return name.replace(" ", "_")
 
 
@@ -104,7 +126,9 @@ def extract_frame(file_path: Path, timestamp: float, out_path: Path) -> None:
     subprocess.run(command, capture_output=True, text=True, check=True)
 
 
-def process_video(file_path: Path, output_dir: Path) -> tuple[Path, bool, str]:
+def process_video(
+    file_path: Path, output_dir: Path, root_dir: Path
+) -> tuple[Path, bool, str]:
     """Worker: probe one video and extract its five frames.
 
     Never raises, so the process pool keeps running the rest of the batch.
@@ -118,7 +142,7 @@ def process_video(file_path: Path, output_dir: Path) -> tuple[Path, bool, str]:
     failures: list[str] = []
     for index, fraction in enumerate(FRAME_FRACTIONS, start=1):
         timestamp = duration * fraction
-        out_path = output_dir / output_name(file_path, index)
+        out_path = output_dir / output_name(file_path, root_dir, index)
         try:
             extract_frame(file_path, timestamp, out_path)
         except subprocess.CalledProcessError as exc:
@@ -147,18 +171,22 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     ensure_tools()
+    root_dir = args.root_dir.resolve()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    videos = discover_videos(args.root_dir)
+    videos = discover_videos(root_dir)
     total = len(videos)
-    print(f"Found {total} video file(s) under {args.root_dir}")
+    print(f"Found {total} video file(s) under {root_dir}")
     if total == 0:
         return
 
     failed: list[tuple[Path, str]] = []
     done = 0
     with concurrent.futures.ProcessPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(process_video, video, args.output_dir): video for video in videos}
+        futures = {
+            pool.submit(process_video, video, args.output_dir, root_dir): video
+            for video in videos
+        }
         for future in concurrent.futures.as_completed(futures):
             done += 1
             path, ok, message = future.result()
