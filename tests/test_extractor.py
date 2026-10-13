@@ -9,6 +9,7 @@ from still_extractor.extractor import (
     DISAMBIGUATOR_LENGTH,
     VIDEO_EXTENSIONS,
     discover_videos,
+    main,
     normalize_extensions,
     output_name,
     probe_duration,
@@ -123,3 +124,37 @@ def test_process_video_reports_corrupt_without_raising(tmp_path, ffmpeg_required
     assert ok is False
     assert "corrupt" in message
     assert not list(out.glob("*.jpg"))
+
+
+def test_main_writes_index_html_and_a_stills_subdir(make_video, ffmpeg_required, tmp_path):
+    root = tmp_path / "root"
+    make_video("root/DAY_1/clip.mp4", duration=2)
+    out = tmp_path / "out"
+
+    main([str(root), str(out)])
+
+    assert (out / "index.html").is_file()
+    assert len(sorted((out / "stills").glob("*.jpg"))) == 5
+
+    text = (out / "index.html").read_text(encoding="utf-8")
+    assert 'src="stills/' in text
+    assert "DAY_1" in text
+
+
+def test_repeated_runs_into_one_output_accumulate(
+    make_video, ffmpeg_required, tmp_path
+):
+    root = tmp_path / "root"
+    make_video("root/DAY_1/one.mp4", duration=2)
+    out = tmp_path / "out"
+    main([str(root), str(out)])
+
+    # footage added later, same root, same output folder
+    make_video("root/DAY_2/two.mp4", duration=2)
+    main([str(root), str(out)])
+
+    assert len(sorted((out / "stills").glob("*.jpg"))) == 10
+
+    text = (out / "index.html").read_text(encoding="utf-8")
+    assert text.count('class="folder-group"') == 2
+    assert "DAY_1" in text and "DAY_2" in text

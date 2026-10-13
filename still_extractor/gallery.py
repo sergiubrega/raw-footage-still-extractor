@@ -1,40 +1,35 @@
-"""Build a static, self-contained two-pane HTML gallery from an extracted stills directory.
+"""Render a self-contained, two-pane HTML gallery over an extracted stills directory.
 
-Reads the flat output directory produced by :mod:`still_extractor`
-and writes a single ``index.html`` next to the JPEGs: a fixed sidebar listing
-every folder (a media-bin style navigator) and a scrollable gallery pane, with
-inline vanilla JS doing the filtering. Standard library only — no frameworks.
+Called by :mod:`still_extractor` after extraction; there is no separate command.
+Produces ``<output_dir>/index.html`` — a fixed sidebar listing every source folder
+(a media-bin style navigator) plus a scrollable gallery pane — with inline vanilla
+JS doing the filtering. Standard library only, no frameworks, no build step.
 
-Filename schema consumed (see the extractor):
+Filename schema consumed (see :mod:`still_extractor.extractor`):
 
     {parent}_{stem}_{digest}_frame_{1-5}.jpg
 
-``{parent}`` and ``{stem}`` are joined with ``_``, and ``_`` is legal inside
-both, so the pair cannot be split reliably from the filename alone. The
-``{digest}`` (``sha1(relative_path)[:DISAMBIGUATOR_LENGTH]``) is what makes exact
-recovery possible: pass ``--source-root`` and the tool re-walks the footage tree,
-recomputes each hash, and restores the true parent folder / stem / relative path.
-Without ``--source-root`` the gallery still groups the five frames per clip, but
-lists them in a single flat group instead of inventing a hierarchy it cannot know.
+``{parent}`` and ``{stem}`` are joined with ``_`` and ``_`` is legal inside both,
+so the pair cannot be split reliably from the filename alone. The ``{digest}``
+(``sha1(relative_path)[:DISAMBIGUATOR_LENGTH]``) is what makes exact recovery
+possible: :func:`index_from_videos` recomputes each hash from the video list the
+extractor already discovered, and joins it back to the stills. That costs no extra
+directory walk — unlike re-walking the footage tree to rebuild the hierarchy.
 """
 
-import argparse
 import hashlib
 import html
 import re
-import sys
 from pathlib import Path
 from urllib.parse import quote
 
-from .extractor import DISAMBIGUATOR_LENGTH, FRAME_FRACTIONS
-
-FRAME_COUNT = len(FRAME_FRACTIONS)
-
-# Folder key for clips whose hierarchy could not be recovered.
-FLAT_KEY = "__flat__"
-
-# Sentinel the sidebar's "Show All" item filters on.
-ALL_KEY = "__all__"
+from .constants import (
+    ALL_KEY,
+    DISAMBIGUATOR_LENGTH,
+    FLAT_KEY,
+    FRAME_COUNT,
+    FRAME_FRACTIONS,
+)
 
 _FRAME_PATTERN = re.compile(
     rf"^(?P<prefix>.+)_(?P<digest>[0-9a-f]{{{DISAMBIGUATOR_LENGTH}}})"
@@ -175,24 +170,21 @@ def parse_still_name(name: str) -> tuple[str, str, int] | None:
     return match.group("prefix"), match.group("digest"), frame
 
 
-def source_index(source_root: Path, wanted: set[str]) -> dict[str, dict[str, str]]:
-    """Map ``digest -> {parent, parent_rel, name, relative}`` for the wanted digests.
+def index_from_videos(videos: list[Path], root_dir: Path) -> dict[str, dict[str, str]]:
+    """Map ``digest -> {parent, parent_rel, name, relative}`` for discovered videos.
 
-    Walks the footage tree and hashes every file's path relative to ``root``,
-    keeping only the digests the stills actually need. Filtering on the wanted set
-    (rather than on a video-extension list) keeps the gallery correct no matter
-    which ``--extensions`` the extractor was run with. Only file names are read —
-    no media decoding — so this is cheap even over a large tree.
+    The extractor already has the video list in hand, so recovering the hierarchy
+    this way costs no extra directory walk. ``relative`` is the path relative to
+    ``root_dir``, which is exactly what the output-name digest was derived from.
     """
-    root = source_root.resolve()
+    root = root_dir.resolve()
     index: dict[str, dict[str, str]] = {}
-    for path in root.rglob("*"):
-        if not path.is_file():
+    for path in videos:
+        try:
+            relative = path.resolve().relative_to(root)
+        except ValueError:  # not under root_dir
             continue
-        relative = path.resolve().relative_to(root)
         digest = hashlib.sha1(str(relative).encode("utf-8")).hexdigest()[:DISAMBIGUATOR_LENGTH]
-        if digest not in wanted:
-            continue
         index[digest] = {
             "parent": path.parent.name,
             "parent_rel": str(relative.parent),
@@ -203,7 +195,7 @@ def source_index(source_root: Path, wanted: set[str]) -> dict[str, dict[str, str
 
 
 def collect_clips(stills_dir: Path) -> dict[str, dict]:
-    """Group stills by digest into clips (one per video)."""
+    """Group every still in ``stills_dir`` by digest into clips (one per video)."""
     clips: dict[str, dict] = {}
     for path in sorted(stills_dir.glob("*.jpg")):
         parsed = parse_still_name(path.name)
@@ -262,7 +254,7 @@ def build_sections(clips: list[dict]) -> list[tuple[str, str, list[dict]]]:
     return sections
 
 
-def _clip_html(clip: dict) -> str:
+def _clip_html(clip: dict, image_prefix: str) -> str:
     frames = clip["frames"]
     figures = []
     for index in range(1, FRAME_COUNT + 1):
@@ -272,7 +264,8 @@ def _clip_html(clip: dict) -> str:
         percent = f"{int(FRAME_FRACTIONS[index - 1] * 100)}%"
         figures.append(
             '<figure class="frame">'
-            f'<img src="{quote(name)}" alt="{html.escape(clip["title"])} @ {percent}"'
+            f'<img src="{image_prefix}{quote(name)}"'
+            f' alt="{html.escape(clip["title"])} @ {percent}"'
             ' loading="lazy" decoding="async">'
             f"<figcaption>{percent}</figcaption>"
             "</figure>"
@@ -285,7 +278,14 @@ def _clip_html(clip: dict) -> str:
     )
 
 
-def render_html(sections: list[tuple[str, str, list[dict]]], *, title: str, note: str) -> str:
+def render_html(
+    sections: list[tuple[str, str, list[dict]]],
+    *,
+    title: str,
+    note: str = "",
+    image_prefix: str = "",
+) -> str:
+    """Render the full HTML document. ``image_prefix`` is prepended to each src."""
     total_clips = sum(len(clips) for _, _, clips in sections)
     total_images = sum(len(c["frames"]) for _, _, clips in sections for c in clips)
 
@@ -300,7 +300,7 @@ def render_html(sections: list[tuple[str, str, list[dict]]], *, title: str, note
         body.append(
             f'<div class="folder-group" data-folder="{key_attr}">'
             f"<h2>{html.escape(display_title)}</h2>"
-            f"{''.join(_clip_html(c) for c in clips)}"
+            f"{''.join(_clip_html(c, image_prefix) for c in clips)}"
             "</div>"
         )
 
@@ -328,61 +328,43 @@ def render_html(sections: list[tuple[str, str, list[dict]]], *, title: str, note
     )
 
 
-def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(
-        prog="raw-footage-still-gallery",
-        description="Build a static two-pane index.html gallery from an extracted stills directory.",
-    )
-    parser.add_argument("stills_dir", type=Path, help="flat directory of extracted JPEG stills")
-    parser.add_argument(
-        "-s",
-        "--source-root",
-        type=Path,
-        default=None,
-        help="original footage root; recovers the exact parent/stem hierarchy via the path hash",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        default=None,
-        help="output HTML path (default: <stills_dir>/index.html)",
-    )
-    parser.add_argument("--title", default=None, help="page title (default: stills dir name)")
-    args = parser.parse_args(argv)
+def build_gallery(
+    stills_dir: Path,
+    output_html: Path,
+    *,
+    index: dict[str, dict[str, str]] | None = None,
+    image_prefix: str = "",
+    title: str | None = None,
+) -> Path | None:
+    """Write ``output_html`` covering every still in ``stills_dir``.
 
-    stills_dir = args.stills_dir.resolve()
-    if not stills_dir.is_dir():
-        sys.exit(f"Error: not a directory: {stills_dir}")
-
+    Covering the whole directory (not just the current run) is what lets repeated
+    extractions into the same output folder accumulate into one gallery. Returns
+    the written path, or ``None`` when there are no stills to show.
+    """
     clips = collect_clips(stills_dir)
     if not clips:
-        sys.exit(f"Error: no stills matching the naming schema found in {stills_dir}")
+        return None
 
-    index: dict[str, dict[str, str]] = {}
-    if args.source_root is not None:
-        if not args.source_root.is_dir():
-            sys.exit(f"Error: --source-root is not a directory: {args.source_root}")
-        index = source_index(args.source_root, set(clips))
-    attach_hierarchy(clips, index)
-
+    attach_hierarchy(clips, index or {})
     sections = build_sections(list(clips.values()))
-    title = args.title or f"Stills \u2014 {stills_dir.name}"
 
+    unresolved = sum(len(c) for key, _, c in sections if key == FLAT_KEY)
     note = ""
-    if args.source_root is None:
+    if unresolved:
         note = (
-            '<p class="note">Folder hierarchy unavailable: a name like '
-            "<code>100MEDIA_A001_C001_2c740e9fad5f_frame_1.jpg</code> cannot be split "
-            "into parent + stem, because <code>_</code> is legal in both. Re-run with "
-            "<code>--source-root /path/to/raw_footage</code> to restore the exact "
-            "hierarchy from the path hash.</p>"
+            f'<p class="note">{unresolved} clip(s) could not be matched to a folder in the '
+            "source tree, so they are listed flat. They were probably extracted from a "
+            "different root, or the source file has since moved.</p>"
         )
 
-    output = (args.output or (stills_dir / "index.html")).resolve()
-    output.write_text(render_html(sections, title=title, note=note), encoding="utf-8")
-    print(output)
-
-
-if __name__ == "__main__":
-    main()
+    output_html.write_text(
+        render_html(
+            sections,
+            title=title or f"Stills \u2014 {output_html.parent.name}",
+            note=note,
+            image_prefix=image_prefix,
+        ),
+        encoding="utf-8",
+    )
+    return output_html

@@ -1,6 +1,6 @@
 [project]
 name = "raw-footage-still-extractor"
-version = "0.1.1"
+version = "0.1.2"
 description = "Fast, parallel CLI that pulls five 300px JPEG stills from every video in a deep footage tree, then builds a browsable two-pane HTML gallery."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -39,7 +39,6 @@ dependencies = []
 
 [project.scripts]
 raw-footage-still-extractor = "still_extractor:main"
-raw-footage-still-gallery = "still_extractor.gallery:main"
 
 [project.urls]
 Repository = "https://github.com/sergiubrega/raw-footage-still-extractor"

@@ -4,7 +4,7 @@
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![CI](https://github.com/sergiubrega/raw-footage-still-extractor/actions/workflows/ci.yml/badge.svg)
 
-A fast, parallel CLI tool built in Python to extract 5 representative low-resolution JPEGs (300px) from raw video files across deep directory structures using FFmpeg fast-seeking, then build a browsable two-pane HTML gallery.
+A fast, parallel CLI that extracts 5 representative low-resolution JPEGs (300px) from every video in a deep footage tree using FFmpeg fast-seeking, and builds a browsable two-pane HTML gallery — all in one command.
 
 ## Prerequisites
 
@@ -86,11 +86,13 @@ usage: raw-footage-still-extractor [-h] [-w WORKERS] [-e LIST]
                                    root_dir output_dir
 
 Extract 5 stills (10/30/50/70/90%) from every video file under a root
-directory, into a flat output directory.
+directory into <output_dir>/stills/, then build <output_dir>/index.html — a
+browsable gallery grouped by source folder.
 
 positional arguments:
   root_dir              root folder to search recursively
-  output_dir            flat folder for the JPEG stills
+  output_dir            output folder; receives index.html and a stills/
+                        folder
 
 options:
   -h, --help            show this help message and exit
@@ -108,12 +110,22 @@ options:
 
 ## Usage
 
+```bash
+uv run python -m still_extractor <ROOT> <OUT>
+```
+
+One command does the whole job:
+
+```
+<OUT>/
+  index.html          the gallery — open this in a browser
+  stills/             the extracted JPEGs
+```
+
 ### Basic Extraction
 
-Extract stills from a raw footage directory into a flat output folder:
-
 ```bash
-uv run python -m still_extractor /path/to/630GB_raw_footage /path/to/output_stills
+uv run python -m still_extractor /path/to/630GB_raw_footage /path/to/output
 ```
 
 ### Custom Worker Count
@@ -121,12 +133,12 @@ uv run python -m still_extractor /path/to/630GB_raw_footage /path/to/output_stil
 By default, the script saturates all available CPU cores (`os.cpu_count()`). To limit core usage during background execution:
 
 ```bash
-uv run python -m still_extractor /path/to/raw_footage /path/to/output_stills --workers 4
+uv run python -m still_extractor /path/to/raw_footage /path/to/output --workers 4
 ```
 
 ## Output Naming Schema
 
-Files are dumped into a flat directory following a collision-resistant structure:
+Stills land in `<output_dir>/stills/`, flat, following a collision-resistant structure:
 
 ```
 {parent_folder}_{file_stem}_{path_hash}_frame_{1-5}.jpg
@@ -138,15 +150,11 @@ Files are dumped into a flat directory following a collision-resistant structure
 - `{1-5}` — the frame index, corresponding to 10%, 30%, 50%, 70%, and 90% of duration.
 - Spaces in any component are replaced with underscores.
 
-## Static HTML Gallery
+## The gallery
 
-Build a browsable, self-contained `index.html` from an extracted stills folder:
-
-```bash
-uv run raw-footage-still-gallery /path/to/output_stills
-```
-
-This writes `index.html` directly into the stills directory and prints its absolute path (⌘-click it to open). Every `<img>` carries `loading="lazy"`, so thousands of stills load without freezing the browser.
+`index.html` is built automatically at the end of every run — there is no second
+command. Every `<img>` carries `loading="lazy"`, so thousands of stills load
+without freezing the browser.
 
 ### Layout: a two-pane media bin
 
@@ -154,19 +162,22 @@ This writes `index.html` directly into the stills directory and prints its absol
 
 The page is a self-contained app (no frameworks, no build step, no network):
 
-- **Left sidebar** — fixed 280px, independently scrolling, lists **Show All** plus one entry per folder (full relative path, so folders that merely share a basename stay distinguishable).
+- **Left sidebar** — fixed 280px, independently scrolling, lists **Show All** plus one entry per source folder (full relative path, so folders that merely share a basename stay distinguishable).
 - **Right gallery pane** — fills the remaining space and scrolls on its own; each folder is a `<div class="folder-group" data-folder="…">` containing its `<h2>` and clip cards.
 - **Filtering** — inline vanilla JS matches the clicked item's `data-target` against each group's `data-folder` (`display: block/none`) and moves the `.active` highlight.
 
-### Grouping: why `--source-root` exists
+### How the folder hierarchy is recovered
 
-The naming schema joins parent and stem with `_`, and `_` is legal inside both — so `100MEDIA_A001_C001_2c740e9fad5f_frame_1.jpg` **cannot** be split back into `parent` + `stem` from the filename alone (it could be `100MEDIA`/`A001_C001` or `100MEDIA_A001`/`C001`). Two modes:
+The naming schema joins parent and stem with `_`, and `_` is legal inside both — so `100MEDIA_A001_C001_2c740e9fad5f_frame_1.jpg` **cannot** be split back into `parent` + `stem` from the filename alone (it could be `100MEDIA`/`A001_C001` or `100MEDIA_A001`/`C001`). The gallery uses the `{path_hash}` instead: the extractor recomputes each video's hash from its path relative to `<ROOT>` and joins it back to the stills. Because the video list is already in hand, this costs **no extra directory walk** and needs no re-extraction.
 
-- **Default** — groups the five frames per clip and lists clips flat. No hierarchy is invented.
-- **`--source-root /path/to/raw_footage`** — re-walks the footage tree (file names only, no decoding), recomputes each clip's path hash, and restores the **exact** hierarchy, rendering an `<h2>` per parent folder. Requires no re-extraction.
+Anything that cannot be matched — e.g. stills left over from a run against a different root — is listed in a single flat **All clips (no hierarchy)** group, with a note explaining why.
+
+### Repeated runs accumulate
+
+`index.html` is rendered over **everything** in `stills/`, not just the current run, so pointing a later run at the same output folder adds to the same gallery:
 
 ```bash
-uv run raw-footage-still-gallery /path/to/output_stills --source-root /path/to/raw_footage
+uv run python -m still_extractor /footage/day_2 /output   # same /output as before
 ```
 
 ## Key Implementation Details
@@ -179,7 +190,7 @@ uv run raw-footage-still-gallery /path/to/output_stills --source-root /path/to/r
 
 ```bash
 uv sync          # create the env (includes the dev group: pytest)
-uv run pytest    # 21 tests; media tests auto-skip if ffmpeg/ffprobe are absent
+uv run pytest    # 25 tests; media tests auto-skip if ffmpeg/ffprobe are absent
 ```
 
 ## Releasing

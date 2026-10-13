@@ -1,8 +1,14 @@
-"""Extract still frames from raw video footage.
+"""Extract still frames from raw video footage and build a browsable HTML gallery.
 
-Recursively walks a directory tree, probes each video's duration with
-``ffprobe``, and pulls five JPEG stills (at 10/30/50/70/90% of runtime) using
-``ffmpeg`` fast-seek (``-ss`` before ``-i``) with inline scaling.
+Recursively walks a directory tree, probes each video's duration with ``ffprobe``,
+and pulls five JPEG stills (at 10/30/50/70/90% of runtime) using ``ffmpeg``
+fast-seek (``-ss`` before ``-i``) with inline scaling. When extraction finishes it
+renders ``index.html`` over everything in the stills folder, so the whole job is a
+single command::
+
+    <output_dir>/
+        index.html          the two-pane gallery
+        stills/             the extracted JPEGs
 
 Standard library only. Requires ``ffmpeg`` and ``ffprobe`` on the system PATH.
 """
@@ -16,36 +22,34 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Extensions scanned for, matched case-insensitively via Path.suffix.lower().
-#
-# ffmpeg detects the container by CONTENT, so this list is only a *discovery*
-# filter — it decides which files we bother to probe, not what we can read. That
-# also means an unusual extension for a supported container can be added with
-# --extensions. Deliberately excluded are camera-RAW formats ffmpeg cannot demux
-# without vendor SDKs (.braw, .r3d, .ari, .crm, .dng, .mxf-wrapped vendor RAW):
-# listing them would only produce guaranteed probe failures.
-VIDEO_EXTENSIONS = frozenset(
-    {
-        ".3g2", ".3gp", ".asf", ".avi", ".divx", ".dv", ".f4v", ".flv",
-        ".insv", ".lrv", ".m1v", ".m2t", ".m2ts", ".m2v", ".m4v", ".mkv",
-        ".mod", ".mov", ".mp4", ".mpe", ".mpeg", ".mpg", ".mpv", ".mts",
-        ".mxf", ".nuv", ".ogv", ".qt", ".rm", ".rmvb", ".tod", ".tp", ".trp",
-        ".ts", ".vob", ".webm", ".wmv", ".y4m",
-    }
+from .constants import (
+    DEFAULT_EXTENSIONS_LABEL,
+    DISAMBIGUATOR_LENGTH,
+    FRAME_FRACTIONS,
+    INDEX_FILENAME,
+    JPEG_QUALITY,
+    SCALE_FILTER,
+    STILLS_SUBDIR,
+    VIDEO_EXTENSIONS,
 )
+from .gallery import build_gallery, index_from_videos
 
-# Human-readable default list, shown in --help.
-DEFAULT_EXTENSIONS_LABEL = ", ".join(sorted(VIDEO_EXTENSIONS))
-
-# Fractions of total duration at which a still is captured.
-FRAME_FRACTIONS = (0.10, 0.30, 0.50, 0.70, 0.90)
-
-SCALE_FILTER = "scale=300:-1"
-JPEG_QUALITY = "2"  # -q:v 2
-
-# Hex chars of the relative-path digest used to disambiguate output filenames.
-# 12 chars = 48 bits; collisions are negligible even at millions of files.
-DISAMBIGUATOR_LENGTH = 12
+__all__ = [
+    "DEFAULT_EXTENSIONS_LABEL",
+    "DISAMBIGUATOR_LENGTH",
+    "FRAME_FRACTIONS",
+    "JPEG_QUALITY",
+    "SCALE_FILTER",
+    "VIDEO_EXTENSIONS",
+    "discover_videos",
+    "ensure_tools",
+    "extract_frame",
+    "main",
+    "normalize_extensions",
+    "output_name",
+    "probe_duration",
+    "process_video",
+]
 
 
 def ensure_tools() -> None:
@@ -160,9 +164,9 @@ def extract_frame(file_path: Path, timestamp: float, out_path: Path) -> None:
 
 
 def process_video(
-    file_path: Path, output_dir: Path, root_dir: Path
+    file_path: Path, stills_dir: Path, root_dir: Path
 ) -> tuple[Path, bool, str]:
-    """Worker: probe one video and extract its five frames.
+    """Worker: probe one video and extract its five frames into ``stills_dir``.
 
     Never raises, so the process pool keeps running the rest of the batch.
     Returns ``(path, ok, message)``.
@@ -175,7 +179,7 @@ def process_video(
     failures: list[str] = []
     for index, fraction in enumerate(FRAME_FRACTIONS, start=1):
         timestamp = duration * fraction
-        out_path = output_dir / output_name(file_path, root_dir, index)
+        out_path = stills_dir / output_name(file_path, root_dir, index)
         try:
             extract_frame(file_path, timestamp, out_path)
         except subprocess.CalledProcessError as exc:
@@ -190,10 +194,15 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="raw-footage-still-extractor",
         description="Extract 5 stills (10/30/50/70/90%) from every video file "
-        "under a root directory, into a flat output directory.",
+        f"under a root directory into <output_dir>/{STILLS_SUBDIR}/, then build "
+        f"<output_dir>/{INDEX_FILENAME} — a browsable gallery grouped by source folder.",
     )
     parser.add_argument("root_dir", type=Path, help="root folder to search recursively")
-    parser.add_argument("output_dir", type=Path, help="flat folder for the JPEG stills")
+    parser.add_argument(
+        "output_dir",
+        type=Path,
+        help=f"output folder; receives {INDEX_FILENAME} and a {STILLS_SUBDIR}/ folder",
+    )
     parser.add_argument(
         "-w",
         "--workers",
@@ -213,35 +222,49 @@ def main(argv: list[str] | None = None) -> None:
 
     ensure_tools()
     root_dir = args.root_dir.resolve()
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = args.output_dir.resolve()
+    stills_dir = output_dir / STILLS_SUBDIR
+    stills_dir.mkdir(parents=True, exist_ok=True)
 
     extensions = normalize_extensions(args.extensions) if args.extensions else VIDEO_EXTENSIONS
     videos = discover_videos(root_dir, extensions)
     total = len(videos)
     print(f"Found {total} video file(s) under {root_dir}")
-    if total == 0:
-        return
 
     failed: list[tuple[Path, str]] = []
-    done = 0
-    with concurrent.futures.ProcessPoolExecutor(max_workers=args.workers) as pool:
-        futures = {
-            pool.submit(process_video, video, args.output_dir, root_dir): video
-            for video in videos
-        }
-        for future in concurrent.futures.as_completed(futures):
-            done += 1
-            path, ok, message = future.result()
-            if not ok:
-                failed.append((path, message))
-                print(f"[FAIL] {path} -> {message}")
-            print(f"Processed {done}/{total}")
+    if total:
+        done = 0
+        with concurrent.futures.ProcessPoolExecutor(max_workers=args.workers) as pool:
+            futures = {
+                pool.submit(process_video, video, stills_dir, root_dir): video
+                for video in videos
+            }
+            for future in concurrent.futures.as_completed(futures):
+                done += 1
+                path, ok, message = future.result()
+                if not ok:
+                    failed.append((path, message))
+                    print(f"[FAIL] {path} -> {message}")
+                print(f"Processed {done}/{total}")
 
-    if failed:
-        print(f"\n{len(failed)} file(s) failed:")
-        for path, message in failed:
-            print(f"  {path}: {message}")
-    print(f"\nDone. {total - len(failed)}/{total} file(s) succeeded.")
+        if failed:
+            print(f"\n{len(failed)} file(s) failed:")
+            for path, message in failed:
+                print(f"  {path}: {message}")
+        print(f"\nDone. {total - len(failed)}/{total} file(s) succeeded.")
+
+    # Built over the whole stills folder, not just this run, so repeated
+    # extractions into the same output directory accumulate into one gallery.
+    html_path = build_gallery(
+        stills_dir,
+        output_dir / INDEX_FILENAME,
+        index=index_from_videos(videos, root_dir),
+        image_prefix=f"{STILLS_SUBDIR}/",
+    )
+    if html_path is None:
+        print(f"\nNo stills in {stills_dir} — no gallery written.")
+    else:
+        print(f"\nGallery: {html_path}")
 
 
 if __name__ == "__main__":
