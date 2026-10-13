@@ -9,6 +9,7 @@ from still_extractor.extractor import (
     DISAMBIGUATOR_LENGTH,
     VIDEO_EXTENSIONS,
     discover_videos,
+    is_metadata_file,
     main,
     normalize_extensions,
     output_name,
@@ -46,13 +47,41 @@ def test_discover_videos_is_case_insensitive_and_flat(tmp_path):
     (tmp_path / "sub").mkdir()
     for name in ("a.mp4", "b.MP4", "sub/c.MXF", "notes.txt", "thumb.jpg"):
         (tmp_path / name).write_bytes(b"x")
-    assert [p.name for p in discover_videos(tmp_path)] == ["a.mp4", "b.MP4", "c.MXF"]
+    videos, ignored = discover_videos(tmp_path)
+    assert [p.name for p in videos] == ["a.mp4", "b.MP4", "c.MXF"]
+    assert ignored == 0
 
 
 def test_discover_videos_honours_custom_extensions(tmp_path):
     for name in ("a.mp4", "b.mov", "c.mkv"):
         (tmp_path / name).write_bytes(b"x")
-    assert [p.name for p in discover_videos(tmp_path, {".mov"})] == ["b.mov"]
+    videos, _ = discover_videos(tmp_path, {".mov"})
+    assert [p.name for p in videos] == ["b.mov"]
+
+
+def test_is_metadata_file():
+    assert is_metadata_file(Path("._C0168.MP4")) is True
+    assert is_metadata_file(Path(".DS_Store")) is True
+    assert is_metadata_file(Path("C0168.MP4")) is False
+    assert is_metadata_file(Path("_C0168.MP4")) is False
+
+
+def test_discover_videos_skips_macos_appledouble_sidecars(tmp_path):
+    """macOS writes a `._name` sidecar beside every file on exFAT/SMB volumes.
+
+    The sidecar inherits the real file's extension, so without this filter it is
+    picked up as a video and reported as corrupt.
+    """
+    (tmp_path / "cam1").mkdir()
+    (tmp_path / "cam1" / "C0168.MP4").write_bytes(b"real")
+    (tmp_path / "cam1" / "._C0168.MP4").write_bytes(b"sidecar")
+    (tmp_path / "._C0169.MP4").write_bytes(b"sidecar")
+    (tmp_path / ".DS_Store").write_bytes(b"junk")
+
+    videos, ignored = discover_videos(tmp_path)
+
+    assert [p.name for p in videos] == ["C0168.MP4"]
+    assert ignored == 2
 
 
 def test_output_name_is_unique_across_identically_named_folders(tmp_path):

@@ -1,6 +1,6 @@
 [project]
 name = "raw-footage-still-extractor"
-version = "0.1.2"
+version = "0.1.3"
 description = "Fast, parallel CLI that pulls five 300px JPEG stills from every video in a deep footage tree, then builds a browsable two-pane HTML gallery."
 readme = "README.md"
 requires-python = ">=3.10"

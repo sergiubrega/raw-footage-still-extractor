@@ -44,6 +44,7 @@ __all__ = [
     "discover_videos",
     "ensure_tools",
     "extract_frame",
+    "is_metadata_file",
     "main",
     "normalize_extensions",
     "output_name",
@@ -73,19 +74,40 @@ def normalize_extensions(raw: str) -> set[str]:
     return extensions
 
 
+# macOS writes an AppleDouble sidecar named ``._<original>`` beside every file on
+# volumes without native APFS/HFS+ metadata (exFAT, FAT32, SMB shares). The
+# sidecar *inherits the real file's extension*, so an extension filter alone
+# treats ``._C0168.MP4`` as a video and reports it as corrupt. It is pure
+# metadata — never media — so it is skipped before any probe.
+MACOS_METADATA_PREFIX = "._"
+MACOS_METADATA_NAMES = frozenset({".DS_Store"})
+
+
+def is_metadata_file(path: Path) -> bool:
+    """True for macOS metadata companions, which are never real media."""
+    return path.name.startswith(MACOS_METADATA_PREFIX) or path.name in MACOS_METADATA_NAMES
+
+
 def discover_videos(
     root_dir: Path, extensions: set[str] | frozenset[str] = VIDEO_EXTENSIONS
-) -> list[Path]:
-    """Recursively collect video files into a flat, sorted list.
+) -> tuple[list[Path], int]:
+    """Collect video files under ``root_dir`` into a flat, sorted list.
 
-    Matching is case-insensitive (``.MP4`` == ``.mp4``) because the comparison is
-    on ``Path.suffix.lower()``.
+    Returns ``(videos, ignored)``, where ``ignored`` counts the macOS metadata
+    companions (see :func:`is_metadata_file`) that were skipped. Matching is
+    case-insensitive (``.MP4`` == ``.mp4``) because the comparison is on
+    ``Path.suffix.lower()``.
     """
-    return sorted(
-        path
-        for path in root_dir.rglob("*")
-        if path.is_file() and path.suffix.lower() in extensions
-    )
+    videos: list[Path] = []
+    ignored = 0
+    for path in root_dir.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in extensions:
+            continue
+        if is_metadata_file(path):
+            ignored += 1
+            continue
+        videos.append(path)
+    return sorted(videos), ignored
 
 
 def probe_duration(file_path: Path) -> float:
@@ -227,9 +249,12 @@ def main(argv: list[str] | None = None) -> None:
     stills_dir.mkdir(parents=True, exist_ok=True)
 
     extensions = normalize_extensions(args.extensions) if args.extensions else VIDEO_EXTENSIONS
-    videos = discover_videos(root_dir, extensions)
+    videos, ignored_metadata = discover_videos(root_dir, extensions)
     total = len(videos)
-    print(f"Found {total} video file(s) under {root_dir}")
+    ignored_note = (
+        f" (ignored {ignored_metadata} macOS metadata file(s))" if ignored_metadata else ""
+    )
+    print(f"Found {total} video file(s) under {root_dir}{ignored_note}")
 
     failed: list[tuple[Path, str]] = []
     if total:

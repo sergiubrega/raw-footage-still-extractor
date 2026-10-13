@@ -36,6 +36,12 @@ Because ffmpeg identifies containers by **content**, this list is only a *discov
 
 **Deliberately excluded:** camera-RAW formats ffmpeg cannot demux without vendor SDKs — `.braw` (Blackmagic), `.r3d` (RED), `.ari` (ARRI), `.crm` (Canon), `.dng` (CinemaDNG). Listing them would only produce guaranteed probe failures; transcode/proxy those first.
 
+**macOS metadata files are skipped.** On volumes without native APFS/HFS+ metadata (exFAT, FAT32, SMB shares), macOS writes a `._<name>` **AppleDouble** sidecar beside every file — and it *inherits the video's extension*. Left alone, `._C0168.MP4` (a 4 KB metadata stub) is picked up as a video, fails `ffprobe`, and gets reported as corrupt, inflating the failure list. These are filtered out before any probe, and the run reports how many were ignored:
+
+```
+Found 835 video file(s) under /path/to/footage (ignored 344 macOS metadata file(s))
+```
+
 ## Installation & Setup
 
 Distributed **only via GitHub** — there is no PyPI package. Clone and run:
@@ -190,7 +196,7 @@ uv run python -m still_extractor /footage/day_2 /output   # same /output as befo
 
 ```bash
 uv sync          # create the env (includes the dev group: pytest)
-uv run pytest    # 25 tests; media tests auto-skip if ffmpeg/ffprobe are absent
+uv run pytest    # 27 tests; media tests auto-skip if ffmpeg/ffprobe are absent
 ```
 
 ## Releasing
