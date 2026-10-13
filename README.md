@@ -66,8 +66,8 @@ deactivate
 ```
 
 Without `uv run` or activation, a bare `python -m raw_footage_still_extractor`
-fails with `No module named raw_footage_still_extractor`: this is a `src/`-layout
-package, so it is only importable once installed into the environment.
+fails with `No module named raw_footage_still_extractor`: the package is only
+importable once installed into the environment.
 </details>
 
 ```

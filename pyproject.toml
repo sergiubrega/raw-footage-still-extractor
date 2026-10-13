@@ -54,3 +54,7 @@ testpaths = ["tests"]
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]
 build-backend = "uv_build"
+
+# Flat layout: the package sits at the repo root, not under src/.
+[tool.uv.build-backend]
+module-root = ""
