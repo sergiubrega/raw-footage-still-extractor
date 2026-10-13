@@ -1,6 +1,9 @@
 # Raw Footage Still Extractor
 
-A fast, parallel CLI tool built in Python to extract 5 representative low-resolution JPEGs (300px) from raw video files (`.mp4`, `.mxf`) across deep directory structures using FFmpeg fast-seeking.
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+
+A fast, parallel CLI tool built in Python to extract 5 representative low-resolution JPEGs (300px) from raw video files across deep directory structures using FFmpeg fast-seeking, then build a browsable two-pane HTML gallery.
 
 ## Prerequisites
 
@@ -157,3 +160,14 @@ uv run raw-footage-still-gallery /path/to/output_stills --source-root /path/to/r
 - **Fast-Seeking (`-ss` before `-i`):** Seeks directly to keyframes near 10%, 30%, 50%, 70%, and 90% of duration without decoding whole streams. Tradeoff: the extracted frame snaps to the nearest preceding keyframe, so it can land up to one GOP *before* the exact mark.
 - **Resiliency:** Skips corrupt files (ffprobe failure) and logs them to stdout without halting the batch process.
 - **Parallel Processing:** Uses Python `ProcessPoolExecutor` to bypass the GIL and utilize all CPU cores on Apple Silicon.
+
+## Development
+
+```bash
+uv sync          # create the env (includes the dev group: pytest)
+uv run pytest    # 21 tests; media tests auto-skip if ffmpeg/ffprobe are absent
+```
+
+## License
+
+MIT © 2026 Sergiu Brega — see [LICENSE](LICENSE).
