@@ -4,7 +4,7 @@ A fast, parallel CLI tool built in Python to extract 5 representative low-resolu
 
 ## Prerequisites
 
-- **Python 3.14+** (declared as `requires-python = ">=3.14"` in `pyproject.toml`)
+- **Python 3.10+** (declared as `requires-python = ">=3.10"` in `pyproject.toml`)
 - **FFmpeg & FFprobe** available in `PATH`
 
 > On macOS, Homebrew's build bundles both: `brew install ffmpeg`. Note the
@@ -31,7 +31,7 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
-  -w, --workers WORKERS
+  -w WORKERS, --workers WORKERS
                         number of worker processes (default: all CPU cores)
 ```
 
