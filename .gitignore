@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build / packaging artifacts (uv_build)
+build/
+dist/
+*.egg-info/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# macOS
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
+
+# Hermes / agent working files
+.hermes/
+TODO.md
