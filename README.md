@@ -93,6 +93,27 @@ Files are dumped into a flat directory following a collision-resistant structure
 - `{1-5}` — the frame index, corresponding to 10%, 30%, 50%, 70%, and 90% of duration.
 - Spaces in any component are replaced with underscores.
 
+## Static HTML Gallery
+
+Build a browsable, self-contained `index.html` from an extracted stills folder:
+
+```bash
+uv run raw-footage-still-gallery /path/to/output_stills
+```
+
+This writes `index.html` directly into the stills directory and prints its absolute path (⌘-click it to open). Every `<img>` carries `loading="lazy"`, so thousands of stills load without freezing the browser.
+
+### Grouping: why `--source-root` exists
+
+The naming schema joins parent and stem with `_`, and `_` is legal inside both — so `100MEDIA_A001_C001_2c740e9fad5f_frame_1.jpg` **cannot** be split back into `parent` + `stem` from the filename alone (it could be `100MEDIA`/`A001_C001` or `100MEDIA_A001`/`C001`). Two modes:
+
+- **Default** — groups the five frames per clip and lists clips flat. No hierarchy is invented.
+- **`--source-root /path/to/raw_footage`** — re-walks the footage tree (file names only, no decoding), recomputes each clip's path hash, and restores the **exact** hierarchy, rendering an `<h2>` per parent folder. Requires no re-extraction.
+
+```bash
+uv run raw-footage-still-gallery /path/to/output_stills --source-root /path/to/raw_footage
+```
+
 ## Key Implementation Details
 
 - **Fast-Seeking (`-ss` before `-i`):** Seeks directly to keyframes near 10%, 30%, 50%, 70%, and 90% of duration without decoding whole streams. Tradeoff: the extracted frame snaps to the nearest preceding keyframe, so it can land up to one GOP *before* the exact mark.

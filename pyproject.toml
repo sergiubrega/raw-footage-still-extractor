@@ -7,6 +7,7 @@ dependencies = []
 
 [project.scripts]
 raw-footage-still-extractor = "raw_footage_still_extractor:main"
+raw-footage-still-gallery = "raw_footage_still_extractor.gallery:main"
 
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]
